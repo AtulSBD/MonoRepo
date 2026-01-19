@@ -1,0 +1,153 @@
+#deployment
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: global-services-uup-sa
+  namespace: __app__
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: global-services-uup-svc
+  namespace: __app__
+spec:
+  selector:
+    app: global-services-uup
+  ports:
+    - port: 8000
+      protocol: TCP
+      targetPort: 8000
+  type: ClusterIP
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: global-services-uup-configmap
+  namespace: __app__
+data:
+
+#TODO: setup actual pipeline later for MONGODB variables
+  .env: |
+    REGION=eu
+    APP_ID=__APP_ID__
+    CAPTURE_DOMAIN=__CAPTURE_DOMAIN__
+    CLIENT_ID=__CLIENT_ID__
+    OWNER_ID=__OWNER_ID__
+    TYPE_NAME=__TYPE_NAME__
+    FLOW=__FLOW__
+    FLOW_VERSION=__FLOW_VERSION__
+    BASE_URL=__BASE_URL__
+    GRAPHQL_URL=__GRAPHQL_URL__
+    TD_BASE_API_EMEA=__TD_BASE_API_EMEA__
+    TD_BASE_API_NA=__TD_BASE_API_NA__
+    TD_TABLE_BD=__TD_TABLE_BD__
+    TD_TABLE_DW=__TD_TABLE_DW__
+    TD_TABLE_CM=__TD_TABLE_CM__
+    TD_TABLE_ST=__TD_TABLE_ST__
+    ITERABLE_BASE_URL=__ITERABLE_BASE_URL__
+    NODE_ENV=production
+    GRAPHQL_URL_GPR=__graphql_url_gpr__
+    MONGODB_URI=__MONGODB_URI__
+    DB_NAME=__DB_NAME__
+    CONFIG_COLLECTION=__CONFIG_COLLECTION__
+    PORT=__port__
+    AES_SECRET=__AES_SECRET__
+    AES_IV=__AES_IV__
+    NEW_RELIC_LOG_API_URL=__NEW_RELIC_LOG_API_URL__
+    NEW_RELIC_API_KEY=__NEW_RELIC_API_KEY__
+    GPR_MIGRATION_URL=__GPR_MIGRATION_URL__
+    TD_TOKEN_URL=__TD_TOKEN_URL__
+    TD_CLIENT_ID=__TD_CLIENT_ID__
+    TD_CLIENT_SECRET=__TD_CLIENT_SECRET__
+    MONGODB_MAX_POOL_SIZE=__MONGODB_MAX_POOL_SIZE__
+    MONGODB_MIN_POOL_SIZE=__MONGODB_MIN_POOL_SIZE__
+    MONGODB_MAX_IDLE_TIME_MS=__MONGODB_MAX_IDLE_TIME_MS__
+    MONGODB_SERVER_SELECTION_TIMEOUT_MS=__MONGODB_SERVER_SELECTION_TIMEOUT_MS__
+
+---
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: global-services-uup-secret
+  namespace: __app__
+type: Opaque
+data:
+  CLIENT_SECRET: __client_secret__
+  OWNER_SECRET: __owner_secret__
+  TD_WRITE_KEY_EMEA: __td_write_key_emea__
+  TD_WRITE_KEY_NA: __td_write_key_na__
+  ITERABLE_API_KEY: __iterable_api_key__
+  SECRET_KEY: __SECRET_KEY__
+  LOCAL_MASTER_KEY: __LOCAL_MASTER_KEY__
+
+
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: global-services-uup
+  namespace: __app__
+spec:
+  replicas: __replicas__
+  selector:
+    matchLabels:
+      app: global-services-uup
+  template:
+    metadata:
+      labels:
+        app: global-services-uup
+    spec:
+      topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: topology.kubernetes.io/zone
+        whenUnsatisfiable: DoNotSchedule
+        minDomains: 2
+        labelSelector:
+          matchLabels:
+            app: global-services-uup
+      serviceAccountName: global-services-uup-sa
+      imagePullSecrets:
+      - name: ecr-secret      
+      volumes:
+        - name: env
+          configMap:
+            name: global-services-uup-configmap
+        - name: secret-volume
+          secret:
+            defaultMode: 420
+            secretName: global-services-uup-secret
+      containers:
+        - name: global-services-uup
+          image: __accountid__.dkr.ecr.__region__.amazonaws.com/uup/__serviceName__:__Build.BuildNumber__
+          env:
+            - name: environment
+              value: __environment__
+          ports:
+            - containerPort: 8000
+              protocol: TCP
+          imagePullPolicy: Always
+          livenessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 10
+            periodSeconds: 10            
+            httpGet:
+              path: "__healthCheckUrl__"
+              port: 8000
+              scheme: HTTP
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 10
+            periodSeconds: 10            
+            httpGet:
+              path: "__healthCheckUrl__"
+              port: 8000
+              scheme: HTTP
+          volumeMounts:
+          - name: env
+            mountPath: /configuration
+          - name: secret-volume
+            mountPath: /etc/secret-volume

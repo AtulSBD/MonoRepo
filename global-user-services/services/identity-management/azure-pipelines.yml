@@ -1,0 +1,76 @@
+trigger: none
+
+# pr:
+# - main
+# - dev
+# - gls-2740
+
+variables: 
+  reponame: global-service-uup
+  regionname: "us-east-1"
+  repositoryname: uup/global-services-uup
+  ecrserviceconnection: AWS_ECR_SC
+  accountnumber: 774305575742
+  Major: "1"
+  Minor: "0"
+  #Build.BuildNumbers: $(Major).$(Minor).$(Build.BuildId)
+pool:
+  vmImage: ubuntu-latest
+steps:
+- task: Npm@1
+  inputs:
+    command: 'install'
+  displayName: 'Install npm packages'
+
+- task: Npm@1
+  inputs:
+    command: 'custom'
+    customCommand: 'run test'
+  displayName: 'Run Jest Tests'
+
+- task: Npm@1
+  inputs:
+    command: 'custom'
+    customCommand: 'run test:coverage'
+  displayName: 'Run Jest Tests'
+
+- task: PublishTestResults@2
+  displayName: 'Publish Jest Test Results'
+  inputs:
+    testResultsFormat: 'JUnit'
+    testResultsFiles: '**/coverage/jest-junit.xml'
+    mergeTestResults: true
+
+- task: PublishCodeCoverageResults@2
+  inputs:
+    codeCoverageTool: 'Cobertura'
+    summaryFileLocation: '**/coverage/cobertura-coverage.xml'
+    
+- script: |
+    docker build -t  $(reponame):$(Build.BuildNumber) .
+  displayName: 'docker build'
+  workingDirectory: '$(Build.SourcesDirectory)'
+
+- task: ArchiveFiles@2
+  inputs:
+    rootFolderOrFile: '$(Build.SourcesDirectory)/k8s'
+    includeRootFolder: true
+    archiveType: 'zip'
+    archiveFile: '$(Build.ArtifactStagingDirectory)/$(Build.BuildNumber).zip'
+    replaceExistingArchive: true
+    
+- task: PublishBuildArtifacts@1
+  inputs:
+    PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+    ArtifactName: '$(reponame)'
+##runs only in PR ##
+- task: ECRPushImage@1
+  inputs:
+    awsCredentials: '$(ecrserviceconnection)'
+    regionName: 'us-east-1'
+    #imageSource: 'imagename'
+    sourceImageName: '$(reponame)'
+    sourceImageTag: '$(Build.BuildNumber)'    
+    pushTag: '$(Build.BuildNumber)'
+    repositoryName: '$(repositoryname)'
+    condition: eq(variables['Build.Reason'], 'PullRequest')

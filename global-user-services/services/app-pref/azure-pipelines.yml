@@ -1,0 +1,96 @@
+# Node.js
+# Build a general Node.js project with npm.
+# Add steps that analyze code, save build artifacts, deploy, and more:
+# https://docs.microsoft.com/azure/devops/pipelines/languages/javascript
+variables: 
+  reponame: app-pref
+  regionname: "us-east-1"
+  repositoryname: uup/global-services-uup-app-pref
+  ecrserviceconnection: AWS_ECR_SC
+  accountnumber: 774305575742
+  Major: "1"
+  Minor: "0"
+  #Build.BuildNumbers: $(Major).$(Minor).$(Build.BuildId)
+pool:
+  vmImage: ubuntu-latest
+steps:
+- task: Npm@1
+  inputs:
+    command: 'install'
+  displayName: 'Install npm packages'
+
+- task: Npm@1
+  inputs:
+    command: 'custom'
+    customCommand: 'run test'
+  displayName: 'Run Jest Tests'
+
+- task: Npm@1
+  inputs:
+    command: 'custom'
+    customCommand: 'run test:coverage'
+  displayName: 'Run Jest Tests'
+
+- task: PublishTestResults@2
+  displayName: 'Publish Jest Test Results'
+  inputs:
+    testResultsFormat: 'JUnit'
+    testResultsFiles: '**/coverage/jest-junit.xml'
+    mergeTestResults: true
+
+- task: PublishCodeCoverageResults@2
+  inputs:
+    codeCoverageTool: 'Cobertura'
+    summaryFileLocation: '**/coverage/cobertura-coverage.xml'
+
+- script: |
+    docker build -t  $(reponame):$(Build.BuildNumber) .
+  displayName: 'docker build'
+  workingDirectory: '$(Build.SourcesDirectory)'
+
+- task: ArchiveFiles@2
+  inputs:
+    rootFolderOrFile: '$(Build.SourcesDirectory)/k8s'
+    includeRootFolder: true
+    archiveType: 'zip'
+    archiveFile: '$(Build.ArtifactStagingDirectory)/$(Build.BuildNumber).zip'
+    replaceExistingArchive: true
+    
+- task: PublishBuildArtifacts@1
+  inputs:
+    PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+    ArtifactName: '$(reponame)'
+
+- task: ECRPushImage@1
+  inputs:
+    awsCredentials: '$(ecrserviceconnection)'
+    regionName: 'us-east-1'
+    #imageSource: 'imagename'
+    sourceImageName: '$(reponame)'
+    sourceImageTag: '$(Build.BuildNumber)'
+    pushTag: '$(Build.BuildNumber)'
+    repositoryName: '$(repositoryname)'
+
+# - task: AWSShellScript@1
+#   inputs:
+#     awsCredentials: 'AWS_ECR_SC'
+#     regionName: 'us-east-1'
+#     scriptType: 'inline'
+#     inlineScript: |
+#       aws ecr start-image-scan --repository-name $(repositoryname) --image-id imageTag=$(Build.BuildNumber)
+#       aws ecr wait image-scan-complete --repository-name $(repositoryname) --image-id imageTag=$(Build.BuildNumber)
+#       sleep 15
+#       if [ $(echo $?) -eq 0 ]; then
+#         SCAN_FINDINGS=$(aws ecr describe-image-scan-findings --repository-name $(repositoryname) --image-id imageTag=$(Build.BuildNumber) | jq '.imageScanFindings.findingSeverityCounts')
+#         CRITICAL=$(echo $SCAN_FINDINGS | jq '.CRITICAL')
+#         HIGH=$(echo $SCAN_FINDINGS | jq '.HIGH')
+#         MEDIUM=$(echo $SCAN_FINDINGS | jq '.MEDIUM')
+#         LOW=$(echo $SCAN_FINDINGS | jq '.LOW')
+#         INFORMATIONAL=$(echo $SCAN_FINDINGS | jq '.INFORMATIONAL')
+#         UNDEFINED=$(echo $SCAN_FINDINGS | jq '.UNDEFINED')
+#         if [ $CRITICAL != null ] || [ $HIGH != null ] || [ $MEDIUM != null ]; then
+#           echo Docker image contains vulnerabilities at CRITICAL or HIGH level or Medium level
+#           #aws ecr batch-delete-image --repository-name my-repo --image-ids imageTag=v0.1  #delete pushed image from container registry
+#           exit 1  #exit execution due to docker image vulnerabilities
+#         fi
+#       fi

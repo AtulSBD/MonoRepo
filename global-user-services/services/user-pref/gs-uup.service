@@ -1,0 +1,13 @@
+[Unit]
+Description=Universal user profile pref
+After=network.target
+
+[Service]
+ExecStart=npx tsx /gs/uupg/src/server.ts
+WorkingDirectory=/gs/uupg/src
+StandardOutput=syslog
+StandardError=syslog
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

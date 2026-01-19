@@ -1,0 +1,43 @@
+import express from 'express';
+import { createApolloServer } from "./app";
+import { port, env } from "./env";
+import https from 'https';
+import fs from 'fs';
+const startServer = async () => {
+  const server = await createApolloServer();
+ const app = express();
+    await server.start();
+    server.applyMiddleware({ app });
+    app.use((req, res) => {
+      res.status(200);
+      res.send('pong');
+      res.end();
+    });
+    var envStr = env;
+    if (env != 'localhost') {
+      envStr = "0.0.0.0";
+      const httpsOptions = {
+        key: fs.readFileSync('server.key'),
+        cert: fs.readFileSync('server.cert'),
+      };
+      https.createServer(httpsOptions, app).listen(port, () => {
+        console.log(`Server ready at https://${envStr}:${port}${server.graphqlPath}`);
+      });
+    } else {
+      app.listen(port, () => {
+        console.log(`🚀 Server ready at http://localhost:${port}${server.graphqlPath}`);
+    });
+    }
+    // var envStr = env;
+    // if (env != 'localhost') 
+    //   envStr ="0.0.0.0";
+  
+    // https.createServer(httpsOptions, app).listen(port, () => {
+    //   console.log(`Server ready at https://${envStr}:${port}${server.graphqlPath}`);
+    // });
+    }
+  
+
+startServer().catch((error) => {
+  console.error("Failed to start server:", error);
+});
